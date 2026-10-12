@@ -39,7 +39,7 @@
       <el-table-column prop="name" label="姓名" width="100" />
       <el-table-column prop="gender" label="性别" width="80" />
       <el-table-column prop="phone" label="联系方式" width="140" />
-      <el-table-column label="所属部门" width="120">
+      <el-table-column label="所属部门">
         <template #default="{ row }">
           {{ row.departmentName || '-' }}
         </template>
