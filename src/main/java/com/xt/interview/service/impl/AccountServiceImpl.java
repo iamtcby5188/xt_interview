@@ -1,14 +1,23 @@
 package com.xt.interview.service.impl;
 
 import com.xt.interview.dto.AccountDTO;
+import com.xt.interview.dto.PageDTO;
 import com.xt.interview.entity.Account;
+import com.xt.interview.entity.Department;
 import com.xt.interview.repository.AccountRepository;
+import com.xt.interview.repository.DepartmentRepository;
 import com.xt.interview.service.AccountService;
 import com.xt.interview.util.MD5Util;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,6 +32,9 @@ public class AccountServiceImpl implements AccountService {
 
     @Autowired
     private AccountRepository accountRepository;
+
+    @Autowired
+    private DepartmentRepository departmentRepository;
 
     @Override
     public AccountDTO createAccount(AccountDTO dto) {
@@ -40,6 +52,7 @@ public class AccountServiceImpl implements AccountService {
         account.setRoleLevel(dto.getRoleLevel());
         account.setStatus(dto.getStatus());
         account.setIsSuper(dto.getIsSuper());
+        account.setDepartmentId(dto.getDepartmentId());
         account.setDeleted(NOT_DELETED);
         account = accountRepository.save(account);
         return convertToDTO(account);
@@ -65,6 +78,7 @@ public class AccountServiceImpl implements AccountService {
         account.setRoleLevel(dto.getRoleLevel());
         account.setStatus(dto.getStatus());
         account.setIsSuper(dto.getIsSuper());
+        account.setDepartmentId(dto.getDepartmentId());
         account = accountRepository.save(account);
         return convertToDTO(account);
     }
@@ -105,6 +119,36 @@ public class AccountServiceImpl implements AccountService {
         return convertToDTO(account);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PageDTO<AccountDTO> getPageAccounts(String username, Integer status, Integer roleLevel, int page, int size) {
+        Specification<Account> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("deleted"), NOT_DELETED));
+
+            if (username != null && !username.trim().isEmpty()) {
+                predicates.add(cb.like(root.get("username"), "%" + username.trim() + "%"));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (roleLevel != null) {
+                predicates.add(cb.equal(root.get("roleLevel"), roleLevel));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createTime"));
+        Page<Account> accountPage = accountRepository.findAll(spec, pageRequest);
+
+        List<AccountDTO> dtoList = accountPage.getContent().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+
+        return new PageDTO<>(dtoList, accountPage.getTotalElements(),
+                accountPage.getTotalPages(), page, size);
+    }
+
     private AccountDTO convertToDTO(Account account) {
         AccountDTO dto = new AccountDTO();
         dto.setId(account.getId());
@@ -115,6 +159,11 @@ public class AccountServiceImpl implements AccountService {
         dto.setRoleLevel(account.getRoleLevel());
         dto.setStatus(account.getStatus());
         dto.setIsSuper(account.getIsSuper());
+        dto.setDepartmentId(account.getDepartmentId());
+        if (account.getDepartmentId() != null) {
+            departmentRepository.findByIdAndDeleted(account.getDepartmentId(), NOT_DELETED)
+                    .ifPresent(dept -> dto.setDepartmentName(dept.getName()));
+        }
         dto.setCreateTime(account.getCreateTime());
         dto.setUpdateTime(account.getUpdateTime());
         return dto;
