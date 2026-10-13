@@ -77,6 +77,7 @@ public class AuthController {
             user.put("name", account.getName());
             user.put("gender", account.getGender());
             user.put("phone", account.getPhone());
+            user.put("departmentId", account.getDepartmentId());
             user.put("roleLevel", account.getRoleLevel());
             user.put("status", account.getStatus());
             response.put("user", user);
