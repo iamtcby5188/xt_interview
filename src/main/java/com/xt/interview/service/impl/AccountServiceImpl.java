@@ -1,14 +1,25 @@
 package com.xt.interview.service.impl;
 
 import com.xt.interview.dto.AccountDTO;
+import com.xt.interview.dto.PageResult;
 import com.xt.interview.entity.Account;
+import com.xt.interview.entity.Department;
 import com.xt.interview.repository.AccountRepository;
+import com.xt.interview.repository.DepartmentRepository;
 import com.xt.interview.service.AccountService;
 import com.xt.interview.util.MD5Util;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import jakarta.persistence.criteria.Predicate;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,6 +35,9 @@ public class AccountServiceImpl implements AccountService {
     @Autowired
     private AccountRepository accountRepository;
 
+    @Autowired
+    private DepartmentRepository departmentRepository;
+
     @Override
     public AccountDTO createAccount(AccountDTO dto) {
         if (accountRepository.existsByUsernameAndDeleted(dto.getUsername(), NOT_DELETED)) {
@@ -34,6 +48,7 @@ public class AccountServiceImpl implements AccountService {
         account.setName(dto.getName());
         account.setGender(dto.getGender());
         account.setPhone(dto.getPhone());
+        account.setDepartmentId(dto.getDepartmentId());
         String password = (dto.getPassword() == null || dto.getPassword().isEmpty())
                 ? DEFAULT_PASSWORD : dto.getPassword();
         account.setPassword(MD5Util.encode(password));
@@ -59,6 +74,7 @@ public class AccountServiceImpl implements AccountService {
         account.setName(dto.getName());
         account.setGender(dto.getGender());
         account.setPhone(dto.getPhone());
+        account.setDepartmentId(dto.getDepartmentId());
         if (dto.getPassword() != null && !dto.getPassword().isEmpty()) {
             account.setPassword(MD5Util.encode(dto.getPassword()));
         }
@@ -95,6 +111,42 @@ public class AccountServiceImpl implements AccountService {
 
     @Override
     @Transactional(readOnly = true)
+    public PageResult<AccountDTO> getAccountPage(int page, int size, String username, Integer status, Integer roleLevel) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        Specification<Account> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("deleted"), NOT_DELETED));
+
+            if (StringUtils.hasText(username)) {
+                predicates.add(cb.like(root.get("username"), "%" + username.trim() + "%"));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (roleLevel != null) {
+                predicates.add(cb.equal(root.get("roleLevel"), roleLevel));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Account> accountPage = accountRepository.findAll(spec, pageable);
+
+        List<AccountDTO> dtoList = accountPage.getContent().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+
+        return new PageResult<>(
+                dtoList,
+                accountPage.getTotalElements(),
+                accountPage.getTotalPages(),
+                accountPage.getNumber(),
+                accountPage.getSize()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public AccountDTO login(String username, String password) {
         Account account = accountRepository.findByUsernameAndPasswordAndDeleted(
                 username, MD5Util.encode(password), NOT_DELETED)
@@ -112,6 +164,11 @@ public class AccountServiceImpl implements AccountService {
         dto.setName(account.getName());
         dto.setGender(account.getGender());
         dto.setPhone(account.getPhone());
+        dto.setDepartmentId(account.getDepartmentId());
+        if (account.getDepartmentId() != null) {
+            departmentRepository.findById(account.getDepartmentId())
+                    .ifPresent(dept -> dto.setDepartmentName(dept.getName()));
+        }
         dto.setRoleLevel(account.getRoleLevel());
         dto.setStatus(account.getStatus());
         dto.setIsSuper(account.getIsSuper());
